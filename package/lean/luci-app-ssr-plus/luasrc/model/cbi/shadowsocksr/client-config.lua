@@ -4,7 +4,6 @@
 local m, s, o,kcp_enable
 local shadowsocksr = "shadowsocksr"
 local uci = luci.model.uci.cursor()
-local ipkg = require("luci.model.ipkg")
 local fs = require "nixio.fs"
 local sys = require "luci.sys"
 local sid = arg[1]
@@ -115,11 +114,10 @@ s = m:section(NamedSection, sid, "servers")
 s.anonymous = true
 s.addremove   = false
 
-o = s:option(DummyValue,"ssr_url","SSR URL") 
+o = s:option(DummyValue,"ssr_url","SS/SSR/V2RAY/TROJAN URL") 
 o.rawhtml  = true
 o.template = "shadowsocksr/ssrurl"
 o.value =sid
-o:depends("type", "ssr")
 
 o = s:option(ListValue, "type", translate("Server Node Type"))
 o:value("ssr", translate("ShadowsocksR"))
@@ -128,6 +126,9 @@ o:value("ss", translate("Shadowsocks New Version"))
 end
 if nixio.fs.access("/usr/bin/v2ray/v2ray") then
 o:value("v2ray", translate("V2Ray"))
+end
+if nixio.fs.access("/usr/sbin/trojan") then
+o:value("trojan", translate("Trojan"))
 end
 o.description = translate("Using incorrect encryption mothod may causes service fail to start")
 
@@ -151,6 +152,7 @@ o.password = true
 o.rmempty = true
 o:depends("type", "ssr")
 o:depends("type", "ss")
+o:depends("type", "trojan")
 
 o = s:option(ListValue, "encrypt_method", translate("Encrypt Method"))
 for _, v in ipairs(encrypt_methods) do o:value(v) end
@@ -203,6 +205,7 @@ o:value("tcp", "TCP")
 o:value("kcp", "mKCP")
 o:value("ws", "WebSocket")
 o:value("h2", "HTTP/2")
+o:value("quic", "QUIC")
 o.rmempty = true
 o:depends("type", "v2ray")
 
@@ -211,17 +214,17 @@ o:depends("type", "v2ray")
 -- TCP伪装
 o = s:option(ListValue, "tcp_guise", translate("Camouflage Type"))
 o:depends("transport", "tcp")
-o:value("none", translate("None"))
 o:value("http", "HTTP")
+o:value("none", translate("None"))
 o.rmempty = true
 
 -- HTTP域名
-o = s:option(DynamicList, "http_host", translate("HTTP Host"))
+o = s:option(Value, "http_host", translate("HTTP Host"))
 o:depends("tcp_guise", "http")
 o.rmempty = true
 
 -- HTTP路径
-o = s:option(DynamicList, "http_path", translate("HTTP Path"))
+o = s:option(Value, "http_path", translate("HTTP Path"))
 o:depends("tcp_guise", "http")
 o.rmempty = true
 
@@ -240,7 +243,7 @@ o.rmempty = true
 -- [[ H2部分 ]]--
 
 -- H2域名
-o = s:option(DynamicList, "h2_host", translate("HTTP/2 Host"))
+o = s:option(Value, "h2_host", translate("HTTP/2 Host"))
 o:depends("transport", "h2")
 o.rmempty = true
 
@@ -248,6 +251,29 @@ o.rmempty = true
 o = s:option(Value, "h2_path", translate("HTTP/2 Path"))
 o:depends("transport", "h2")
 o.rmempty = true
+
+-- [[ QUIC部分 ]]--
+
+o = s:option(ListValue, "quic_security", translate("QUIC Security"))
+o:depends("transport", "quic")
+o.rmempty = true
+o:value("none", translate("None"))
+o:value("aes-128-gcm", translate("aes-128-gcm"))
+o:value("chacha20-poly1305", translate("chacha20-poly1305"))
+
+o = s:option(Value, "quic_key", translate("QUIC Key"))
+o:depends("transport", "quic")
+o.rmempty = true
+
+o = s:option(ListValue, "quic_guise", translate("Header"))
+o:depends("transport", "quic")
+o.rmempty = true
+o:value("none", translate("None"))
+o:value("srtp", translate("VideoCall (SRTP)"))
+o:value("utp", translate("BitTorrent (uTP)"))
+o:value("wechat-video", translate("WechatVideo"))
+o:value("dtls", "DTLS 1.2")
+o:value("wireguard", "WireGuard")
 
 -- [[ mKCP部分 ]]--
 
@@ -305,18 +331,32 @@ o.rmempty = true
 o = s:option(Flag, "insecure", translate("allowInsecure"))
 o.rmempty = true
 o:depends("type", "v2ray")
+o:depends("type", "trojan")
 
 -- [[ TLS ]]--
 o = s:option(Flag, "tls", translate("TLS"))
 o.rmempty = true
 o.default = "0"
 o:depends("type", "v2ray")
+o:depends("type", "trojan")
+
+o = s:option(Value, "tls_host", translate("TLS Host"))
+o:depends("tls", "1")
+o.rmempty = true
+o:depends("type", "trojan")
 
 -- [[ Mux ]]--
 o = s:option(Flag, "mux", translate("Mux"))
 o.rmempty = true
 o.default = "0"
 o:depends("type", "v2ray")
+o:depends("type", "trojan")
+
+o = s:option(Value, "concurrency", translate("Concurrency"))
+o.datatype = "uinteger"
+o.rmempty = true
+o.default = "8"
+o:depends("mux", "1")
 
 o = s:option(Flag, "fast_open", translate("TCP Fast Open"))
 o.rmempty = true
